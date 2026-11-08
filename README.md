@@ -8,7 +8,7 @@
 </div>
 
 # SuperGlookoQuery
-**Talk to Claude Desktop about your Glooko diabetes data, whatever pump or CGM combination you're actually running.**
+**Explore Glooko diabetes data through an MCP-compatible client, whatever pump or CGM combination you're actually running.**
 
 > [!IMPORTANT]
 > **Not medical advice.** This is for understanding your own data and preparing sharper questions for your care team. It is not a medical device, and nothing it says should change your therapy on its own. Full text in the [disclaimer](#disclaimer) at the bottom.
@@ -28,6 +28,7 @@
 * [Privacy, in plain terms](#privacy-in-plain-terms)
 * [The clinical auditor persona](#the-clinical-auditor-persona)
 * [Installing it](#installing-it)
+* [Using with VS Code Copilot Chat](#using-with-vs-code-copilot-chat)
 * [Configuring it](#configuring-it)
 * [Using it](#using-it)
 * [Moving from sample data to your own](#moving-from-sample-data-to-your-own)
@@ -45,7 +46,7 @@
 <a id="what-this-actually-does"></a>
 ## What this actually does
 
-SuperGlookoQuery connects to your Glooko diabetes data and hands Claude a set of analytical tools, not a raw data dump. Install the extension, ask a question in plain language, and Claude reaches into your history to answer it, live, in the conversation.
+SuperGlookoQuery connects to your Glooko diabetes data and provides MCP-compatible clients with analytical tools, not a raw data dump. Install the extension or configure the MCP server, ask a question in plain language, and your client can query the available history in the conversation.
 
 People ask things like:
 * "How was my time in range last month?"
@@ -61,7 +62,7 @@ That means, under the hood:
 * **Basal behaviour as states.** Suspended, running at max, or blind after a lost signal, rather than raw delivery units.
 * **Device-specific extras, only when earned.** Something like CamAPS FX's own operating-mode breakdown appears once your account's data has actually produced that field, not before.
 
-You never call any of this directly. Claude does it mid-conversation, as many small calls as the question actually needs.
+You never call any of this directly. Your MCP client does it mid-conversation, as many small calls as the question actually needs.
 
 ---
 
@@ -72,7 +73,7 @@ Glooko doesn't publish a field-level schema, and different pump/CGM pairings sen
 
 * **Nothing gets thrown away.** Every field Glooko sends is kept, not just the ones a tool currently reads. Anything not yet mapped to a typed column lands in an `extra` overflow column instead of being discarded.
 * **Tools are earned, not assumed.** A device-specific tool, like the CamAPS pump-mode breakdown, only registers once your own account's data has shown the field it needs at least once. There's no config file to hand-edit and no tool silently misbehaving on hardware it was never written for.
-* **You can contribute your own device's shape, from inside the chat.** Ask Claude to review your data for the schema registry, or call `get_registry_contribution_report` yourself. It builds a report of which fields your account populates and how often, with every real value already swapped for a fixed, fabricated placeholder before you ever see it. You review it, then type the confirmation phrase it gives you yourself (this is deliberately not something Claude can do on your behalf), and `submit_registry_contribution` runs an independent second privacy scan plus a content-integrity check before opening a pull request against this project's `schema-registry/` folder. Your actual data never leaves your machine at any point in this. A `node src/submit-registry-entry.js` CLI also exists for local development, but it needs a terminal a real Claude Desktop install doesn't have, so the in-chat tools above are the real path for an actual user.
+* **You can contribute your own device's shape, from inside the chat.** Ask your AI assistant to review your data for the schema registry, or call `get_registry_contribution_report` yourself. It builds a report of which fields your account populates and how often, with every real value already swapped for a fixed, fabricated placeholder before you ever see it. You review it, then type the confirmation phrase yourself (the assistant cannot confirm on your behalf), and `submit_registry_contribution` runs an independent second privacy scan plus a content-integrity check before opening a pull request against this project's `schema-registry/` folder. Your actual data never leaves your machine at any point in this flow. A `node src/submit-registry-entry.js` CLI also exists for local development.
 
 This is genuinely a work in progress: tested end to end against one real account so far. See [`docs/DESIGN.md`](docs/DESIGN.md) for the full architecture, [`docs/PROMOTION.md`](docs/PROMOTION.md) for how a discovered field graduates from the overflow column into a proper typed one, and [`schema-registry/README.md`](schema-registry/README.md) if you'd like to contribute your own device's data.
 
@@ -85,10 +86,10 @@ Anyone syncing pump or CGM data to Glooko. Realistic expectations first: this ha
 
 ### What you need
 
-* **Claude Desktop**, free from [claude.ai/download](https://claude.ai/download). This only runs inside Claude Desktop, macOS or Windows. It's not a standalone server and doesn't work with Claude on web or mobile.
+* **Claude Desktop** (using the packaged extension) or **VS Code with GitHub Copilot Chat** (using the checked-in MCP configuration below). Other MCP clients may work, but are not verified here.
 * **A Glooko account with a device synced to it**, if you want to analyse your own data. Not required for the sample dataset.
 
-That's the whole list. No Docker, no separate Node install, no terminal.
+For VS Code, install Node.js 18 or later and the repo dependencies; the server runs locally as a stdio process.
 
 ---
 
@@ -98,15 +99,16 @@ That's the whole list. No Docker, no separate Node install, no terminal.
 This handles real medical credentials and real health data, so it's built local-first, on purpose:
 
 * **No middle server.** Your Glooko email and password go straight from this extension to Glooko's own servers. Nothing in between, and nothing Anthropic ever sees.
-* **Everything runs on your machine.** The extension process, the local database, and every analysis tool live entirely inside Claude Desktop, on your computer.
-* **Credentials aren't stored in plain text.** They sit in Claude Desktop's own secure settings storage; the password field is marked sensitive at the config level.
+* **The MCP server and archive run locally.** In VS Code the server is a local Node process and its database is kept in the workspace's ignored `data/` directory.
+* **A local server does not make an AI chat private.** When you use Copilot Chat or another cloud AI client, prompts and MCP tool results may be processed by that provider. The VS Code setup below is deliberately limited to synthetic sample data; do not use it with real health data or credentials.
+* **Credentials aren't stored in plain text.** In the packaged Claude Desktop extension, credentials use Claude Desktop's secure settings storage; the password field is marked sensitive at the config level. Never put credentials in `.vscode/mcp.json` or commit them.
 * **Schema-registry contributions carry no real values.** Every example in a discovery report is a fixed, fabricated placeholder, and the whole flow goes through a mandatory human review, a typed confirmation, and an independent second privacy scan before anything is ever written anywhere.
 
 > [!IMPORTANT]
 > You're talking to a cloud AI about this data. Most providers let you turn off chat history or model training somewhere in their settings. Worth doing before you get into anything clinical, so your medical history isn't retained anywhere it doesn't need to be.
 
 > [!TIP]
-> Want to try it before connecting a real account? The extension ships with a small built-in sample database, entirely fabricated rather than sampled from anyone's real data, so you can explore everything offline: no Glooko login, no network access at all.
+> Want to try it before connecting a real account? The extension and the VS Code config use a built-in sample database, entirely fabricated rather than sampled from anyone's real data. In VS Code, the checked-in configuration leaves Glooko credentials blank, so this MCP server does not contact Glooko.
 
 ---
 
@@ -144,6 +146,20 @@ No separate build step, no container to start, nothing to keep running in a term
 
 ---
 
+<a id="using-with-vs-code-copilot-chat"></a>
+## Using with VS Code Copilot Chat
+
+The repository includes [`.vscode/mcp.json`](.vscode/mcp.json) for **GitHub Copilot Chat in VS Code**. This is a VS Code workspace MCP configuration; it does not add a connection to the GitHub Copilot desktop app, github.com, or other Copilot surfaces.
+
+1. Install Node.js 18 or later and VS Code with the GitHub Copilot Chat extension.
+2. From the repository root, run `npm install`.
+3. Open this repository as a workspace in VS Code. Start the `superglookoquery` server from `.vscode/mcp.json` and approve it if VS Code prompts you; then confirm its tools are available in Copilot Chat.
+4. Try a question about the sample data. The config explicitly blanks `GLOOKO_EMAIL` and `GLOOKO_PASSWORD` and stores its archive under the ignored `data/copilot-synthetic/` folder. With no existing archive there, the server seeds it from the bundled synthetic database and makes no Glooko requests.
+
+Keep those credential overrides blank and do not add real credentials to the workspace configuration. The MCP process is local, but Copilot Chat may send prompts and tool results to GitHub's AI service. The offline setting prevents this server from logging in to Glooko; it does **not** prevent the AI client from processing the health-related tool output. Use only the synthetic sample dataset with Copilot Chat. This integration is a local development setup, not a supported route for analyzing real patient data.
+
+---
+
 <a id="configuring-it"></a>
 ## Configuring it
 
@@ -174,14 +190,14 @@ Fill in your Glooko email and password, set the account glucose unit to match yo
 <a id="using-it"></a>
 ## Using it
 
-1. Start a chat in Claude Desktop.
-2. Confirm the **SuperGlookoQuery** extension is enabled for the conversation, in Claude Desktop's tools/connector picker.
+1. Start a chat in Claude Desktop or VS Code Copilot Chat.
+2. Confirm **SuperGlookoQuery** is enabled for the conversation: select the extension in Claude Desktop's tools picker, or start the MCP server and select its tools in VS Code Copilot Chat.
 3. For the full audit experience, just ask for it, e.g. *"use the clinical auditor persona"* (see [The clinical auditor persona](#the-clinical-auditor-persona)), or skip that and ask a question directly; the tools work either way.
 4. Ask something. A decent opener:
 
    > *"Tell me about my diabetes data."*
 
-Claude pulls what it needs and gives its read on it. Keep going from there: ask follow-ups, drill into a single day, or ask for a chart. SuperGlookoQuery opens a real, interactive glucose chart directly in your browser rather than describing numbers at you.
+Your AI client pulls what it needs and gives its read on it. Keep going from there: ask follow-ups, drill into a single day, or ask for a chart. SuperGlookoQuery opens a real, interactive glucose chart directly in your browser rather than describing numbers at you.
 
 ---
 
@@ -242,7 +258,7 @@ Something not working? [Open an issue](https://github.com/sikcapri/superglookoqu
 <a id="tool-reference"></a>
 ## Tool reference
 
-These are the MCP tools this extension registers. You never call them directly, Claude does, mid-conversation, but this is here if you want to know exactly what Claude can (and can't) see, or why it asked a particular follow-up.
+These are the MCP tools this server registers. You never call them directly; your AI client does, mid-conversation. This reference shows exactly what it can (and can't) see, or why it asked a particular follow-up.
 
 ### A note on timestamps
 
@@ -302,7 +318,7 @@ There's also an MCP **prompt** with the same content, `clinical_auditor`, for cl
 
 *(For anyone reading the source. If you just want to use the tool, skip this.)*
 
-Data flows in this order: Glooko → sync → store → range → analytics → tools → Claude.
+Data flows in this order: Glooko → sync → store → range → analytics → tools → MCP client.
 
 * **`manifest.json`**: the MCPB manifest: what Claude Desktop reads to install the extension, what settings it asks for, and how it launches `src/server.js`.
 * **`src/env.js`**: sanitizes the `user_config`-derived environment variables Claude Desktop injects, before anything else reads them. Must stay the first import in `server.js`; see its own header comment for the specific Claude Desktop quirk this works around.

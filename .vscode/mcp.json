@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "superglookoquery": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/src/server.js"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "GLOOKO_EMAIL": "",
+        "GLOOKO_PASSWORD": "",
+        "OMNI_DATA_DIR": "${workspaceFolder}/data/copilot-synthetic"
+      }
+    }
+  }
+}
